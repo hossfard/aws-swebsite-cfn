@@ -1,0 +1,127 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Parameters:
+  # Must specify parameters by passing `--parameters` flag into cloudformation
+  # e.g.
+  # ... --parameters ParameterKey=DomainName,ParameterValue="example.com"
+  DomainName:
+    Type: String
+    Description: '(sub)Domain name e.g. (foo.)example.com'
+
+  CertificateArn:
+    Type: String
+    Description: 'Certificate ARN (must be in `us-east-1`)'
+
+  S3BucketName:
+    Type: String
+    Description: 'S3 Bucket name'
+
+  CreateRoute53:
+    Type: String
+    Default: 'false'
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Description: 'Indicates whether to create DNS entry or not'
+
+Mappings:
+  RegionMap:
+    # see https://docs.aws.amazon.com/general/latest/gr/rande.html#cf_region
+    # there is only one endpoint
+    'us-east-1':
+      ZoneId: Z2FDTNDATAQYW2
+
+Conditions:
+  CreateRoute53Cond: !Equals [ !Ref CreateRoute53, 'true' ]
+
+Resources:
+  zbS3StorageBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      AccessControl: PublicRead
+      BucketName: !Ref S3BucketName
+      MetricsConfigurations:
+        - Id: EntireBucket
+      WebsiteConfiguration:
+        IndexDocument: 'index'
+        ErrorDocument: '404'
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['*']
+            AllowedMethods: ['GET']
+            AllowedOrigins: ['*']
+      VersioningConfiguration:
+        Status: Suspended
+    # Retain S3 bucket on stack deletion
+    DeletionPolicy: Retain
+
+  zbCloudFront:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        IPV6Enabled: true
+      Tags:
+        - Key: 'website'
+          Value:
+            Ref: DomainName
+      DistributionConfig:
+        Origins:
+          # Must remove `http(s)://` from name
+          # Example: bucketname.s3-website-us-east-1.amazonaws.com
+          - DomainName: !Select [1, !Split ['//', !GetAtt zbS3StorageBucket.WebsiteURL]]
+            Id: zbOrigin
+            CustomOriginConfig:
+              HTTPPort: 80
+              HTTPSPort: 443
+              OriginProtocolPolicy: http-only
+        DefaultCacheBehavior:
+          ViewerProtocolPolicy: redirect-to-https
+          TargetOriginId: zbOrigin
+          ForwardedValues:
+            QueryString : true
+            Cookies:
+              Forward : none
+        Enabled: true
+        # alternate domain CNAMEs
+        Aliases:
+          - Ref: DomainName
+        ViewerCertificate:
+          AcmCertificateArn: !Ref CertificateArn
+          # Options: {`sni-only`, `vip`}. `sni-only` will incur no
+          # additional charges
+          SslSupportMethod: sni-only
+
+  R53HostedZone:
+    Type: AWS::Route53::HostedZone
+    Condition: CreateRoute53Cond
+    Properties:
+      Name: !Ref DomainName
+
+  R53RecordSet:
+    Type: AWS::Route53::RecordSet
+    Condition: CreateRoute53Cond
+    Properties:
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt zbCloudFront.DomainName
+        # There is only one endpoint
+        HostedZoneId: !FindInMap [RegionMap, 'us-east-1', ZoneId]
+        EvaluateTargetHealth: false
+      HostedZoneId: !Ref R53HostedZone
+      Comment: 'Redirect to cloudfront'
+      Name: !Ref DomainName
+
+Outputs:
+
+  AWSWebsiteS3Url:
+    Value: !GetAtt zbS3StorageBucket.WebsiteURL
+    # Cloudformation doesn't like using `Ref` in `Description`
+    Description: 'HTTP website URL'
+
+  AWSDomainURL:
+    Value: !Join ['', ['https://', !GetAtt zbS3StorageBucket.DomainName]]
+    Description: 'S3 Domain URL'
+
+  CloudFrontURL:
+    Value: !GetAtt zbCloudFront.DomainName
+    Description: 'Cloudfront url'
