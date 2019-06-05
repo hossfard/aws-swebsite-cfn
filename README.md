@@ -8,8 +8,8 @@ hosting with HTTPS support on AWS.
 ```
 
 This assumes that you already own a domain. AWS Route53 DNS can be
-skipped altogether if using a subdomain.
-
+skipped altogether if using a subdomain or your DNS provider supports
+`ALIAS` records.
 
 # Requirements
 
@@ -27,17 +27,19 @@ aws --profile <profile-name> \
     --template-body file://./src/cert.yaml \
     --parameters ParameterKey=DomainName,ParameterValue="<sub.example.com>" \
     ParameterKey=VerificationDomain,ParameterValue="<example.com>"
-# parameters are defined inside the config yaml file
 ```
 
 where
  - `<profile-name>` is the profile name under `~/.aws/credentials`
-    with appropriate permissions for creating cloudformation stacks, S3
-    buckets, Cloudfront distribution, and Certificate.
+    with appropriate permissions for creating cloudformation stacks,
+    S3 buckets, Cloudfront distribution, and Certificate. This option
+    can be skipped there is only one unnamed profile in the config.
  - `<cert-stack-name>` name assigned to the stack
  - `<sub.example.com>` is the domain name e.g. `example.com` or
    `sub.example.com`
+ - `--region` value *must* remain `"us-east-1"`
  -  AWS will send emails to `<example.com>` domains for verification
+    at addresses below
 
  ```text
  administrator@<example.com>
@@ -46,10 +48,11 @@ where
  webmaster@<example.com>
  admin@<example.com>
  ```
- - `--region` value must remain `"us-east-1"`
 
-2. Verify the domain after receiving verification email, then get
-   certificate ARN. From commandline do,
+2. Verify the domain after receiving verification email
+3. Get created certificate's ARN (console or cli).
+
+If using the commandline do,
 
 ```bash
 aws --profile <profile-name> \
@@ -57,26 +60,28 @@ aws --profile <profile-name> \
     describe-stacks --stack-name <cert-stack-name>
 ```
 
-3. Create storage (S3 bucket) and a CDN (cloudfront)
+4. Create storage (S3 bucket) and a CDN (cloudfront)
 
 ```bash
 aws --profile <profile-name> \
     cloudformation create-stack \
     --stack-name <s3cf-stack-name> \
-    --region "<insert-AWS-region-here>" \
+    --region "<AWS-region>" \
     --template-body file://./src/s3-cloudfront.yaml \
     --parameters ParameterKey=DomainName,ParameterValue="<sub.example.com>" \
     ParameterKey=S3BucketName,ParameterValue="<bucket-name>" \
     ParameterKey=CertificateArn,ParameterValue="<long-cert-ARN-string>"
 ```
+
 where,
-  - `DomainName` is the same as the one defined in the previous step
+  - `DomainName` value (`<sub.example.com>`) is the same as the one
+    defined in the previous step
   - `<bucket-name>` defines a *globally* unique S3 bucket name,
     e.g. `com.example`
   - `<long-cert-ARN-string>` defines the certificate ARN (used for
-      cloudfront) obtained in the previous step
+     cloudfront) obtained in the previous step
 
-3. Wait for the stack creation to finish. Then create a DNS entry
+5. Wait for the stack creation to finish. Then create a DNS entry
    pointing to cloudfront.
 
 Once the second stack is completed, the cloudfront URL your DNS should
@@ -88,6 +93,9 @@ aws --profile <profile-name> \
     describe-stacks --stack-name <s3cf-stack-name>
 ```
 
+Create an ALIAS record pointing to cloudfront URL or have your
+provider use AWS DNS.
+
 # Long-winded Guide
 
 The deploy is done in a two steps:
@@ -96,22 +104,27 @@ The deploy is done in a two steps:
 
 This is because the certificate, as of this writing, *must* be created
 in `us-east-1` while the S3 bucket and cloudfront may be created in
-any region. Since cloudformation by itself (as of this writing) does
-not have a straightforward way of creating resources in two different
-regions in the same stack, it's easier to break them up into two
-different stacks. These two stacks can of course easily be merged into
-a single stack but with the caveat that all the resources would have
-to be created in the same region.
+any region. Since cloudformation by itself does not seem to have a
+straightforward way of creating resources in two different regions in
+the same stack, it is easier to break them up into two different
+stacks. These two stacks can of course easily be merged into one but
+with the caveat that all the resources would have to be created in the
+same region, which is less than ideal.
 
 0. Prerequisites
- - Unless using a subdomain, must use AWS DNS (Route 53) since normal
-   DNS does not allow domain root `CNAME` records.
- - If not already installed, [install](https://aws.amazon.com/cli/)
-   `awscli` or activate it.
+ - Unless using a subdomain, either your DNS provider must support
+   `ALIAS` records or must use AWS DNS (Route 53) since normal DNS
+   does not allow domain root `CNAME` records.
+ - If not already installed, [install](https://aws.amazon.com/cli/) `awscli` or activate it.
  - It's assumed that a default aws profile exists. If not, pass
    `--profile <profile-name` to all `aws` commands.
+
 1. Navigate to the root and create the cloudformation stack for
-   generating a certificate
+   generating a certificate.
+
+The profile used must have appropriate permissions for creating
+Cloudformation stacks, S3 buckets, Cloudfront distribution, and
+Certificate. May be skipped if you have a single unnamed profile.
 
 ```bash
 # Note: region must be "us-east-1". Do not change.
@@ -122,7 +135,7 @@ aws cloudformation create-stack \
     --template-body file://./src/cert.yaml \
     --parameters ParameterKey=DomainName,ParameterValue="<sub.example.com>" \
     ParameterKey=VerificationDomain,ParameterValue="<example.com>" \
-    [ParameterKey=VerificationMethod,ParameterValue="{EMAIL,DNS}"]
+    ParameterKey=VerificationMethod,ParameterValue="{EMAIL,DNS}" # optional
 # parameters are defined inside the config yaml file
 ```
 
@@ -138,10 +151,9 @@ webmaster@<example.com>
 admin@<example.com>
 ```
 
-The domain *must* be confirmed for the `cloudformation` stack
-creation to reach completion. Otherwise, if ignored for too
-long, the stack creation will timeout, fail, and delete the
-certificate.
+The domain *must* be confirmed for the `cloudformation` stack creation
+to reach completion. Otherwise, if ignored for too long, the stack
+creation will timeout, fail, rollback, and delete the certificate.
 
 Alternatively, if you can't get access to those email addresses, set
 to `DNS` and enter the required DNS records for your domain and
@@ -152,14 +164,8 @@ records by doing a query on the stack status
 aws --region <region-name> \
     describe-stacks --stack-name <cert-stack-name>
 ```
-
 - `<cert-stack-name>` is the named assigned to the cloudformation
   stack
-- `profile-name` is the profile name defined under
-  `~/.aws/credentials` and must have appropriate permissions for
-  creating Cloudformation stacks, S3 buckets, Cloudfront distribution,
-  and Certificate. May be skipped if you have a single unnamed
-  profile.
 - `region` value [must be](https://docs.aws.amazon.com/acm/latest/userguide/acm-regions.html) `us-east-1` for the cloudfront
   certificate (as of this writing). Do not change.
 
@@ -181,9 +187,9 @@ aws --region <region-name> \
 2. Create storage (S3 bucket) and a CDN (cloudfront)
 
 ```bash
-aw  cloudformation create-stack \
+aws cloudformation create-stack \
     --stack-name <s3cf-stack-name> \
-    --region "<insert-AWS-region-here>" \
+    --region "<AWS-region>" \
     --template-body file://./src/s3-cloudfront.yaml \
     --parameters ParameterKey=DomainName,ParameterValue="<sub.example.com>" \
     ParameterKey=S3BucketName,ParameterValue="<bucket-name>" \
@@ -196,37 +202,38 @@ where,
       e.g. `com.example`
     - `<long-cert-ARN-string>` defines the certificate ARN (used for
       cloudfront) obtained in the previous step
-    - `<insert-AWS-region-here>` is the AWS region where the resources
-      are created
+    - `<AWS-region>` is the AWS region where the resources are created
     - `<s3cf-stack-name>` is the name assigned to this stack
-    - `CreateRoute53` is optional (defaults to `false`) and determines
-      whether a Route53 hosted zone along with `A ALIAS` record will
-      be created pointing to the cloudfront URL.
+    - `CreateRoute53` (optional) can be `true` or `false`
+      (default). It is used to specify whether a Route53 hosted zone
+      along with `A ALIAS` record will be created (if `true`) pointing
+      to the cloudfront URL.
 
-This can take a while (e.g. 20 minutes) to complete.
+Creation of this second stack may take a while (e.g. 20 minutes) to
+complete.
 
 3. Create a DNS entry pointing to cloudfront
 
+Once the last stack is created, get the cloudfront URL using either
+the AWS web console or using the `describe-stacks --stack-name
+<s3cf-stack-name>` approach highlighted above.
+
 If using a subdomain, you can just add a `CNAME` entry to your DNS
-configuration list
+configuration list:
 
 ```text
-<website> CNAME <cloudfront-url>
+<subdomain> CNAME <cloudfront-url>
 ```
-where `<cloudfront-url>` can be found from the `CloudFrontURL` output
-in the second stack.
 
-If using root domain, must use AWS DNS (Route53) since normal DNS does
-not allow domain root `CNAME` records pointing to another URL. With
-Route53, you can create an `A` record `ALIAS` pointing to the
-`CloudFrontURL`.
+Alternatively if your DNS provider does not support `ALIAS` records
+and you are using the root domain for hosting, you have to use AWS DNS
+(Route53). Refer to `CreateRoute53` option above.
 
 4. Website URL that you should redirect in DNS is in the output fields
 
 ```bash
 aws --region <region-name> \
-    describe-stacks --stack-name <cert-stack-name> \
-    | grep -B1 -C2 "CertArn"
+    describe-stacks --stack-name <s3cf-stack-name>
 ```
 
 # Undoing Deployment
@@ -238,8 +245,8 @@ Delete both stacks:
 aws --region us-east-1 \
     delete-stack --stack-name <cert-stack-name>
 ```
-2. If the S3 bucket is non-empty (see `S3BucketName` above), manually
-   delete the S3 bucket
+2. If the created S3 bucket (see `S3BucketName` above) is not empty,
+   manually delete the S3 bucket
 
 ```bash
 aws --region <aws-region> \
@@ -278,6 +285,6 @@ Depending on your use ase, total associated cost can be as low as less
 than $1/month:
 
 - [S3](https://aws.amazon.com/s3/pricing/)
-- [Certificate Manager](https://aws.amazon.com/s3/pricing/)
-- [Cloudfront](https://aws.amazon.com/s3/pricing/)
+- [Certificate Manager](https://aws.amazon.com/certificate-manager/pricing/)
+- [Cloudfront](https://aws.amazon.com/cloudfront/pricing/)
 - [Route 53](https://aws.amazon.com/route53/pricing/)
