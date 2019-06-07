@@ -281,10 +281,11 @@ Official docs of the resources used
 
 ## Associated AWS pricing
 
-Depending on your use ase, total associated cost can be as low as less
-than $1/month:
+Depending on your use case, total associated cost can be as low as
+less than $1/month:
 
 - [S3](https://aws.amazon.com/s3/pricing/)
 - [Certificate Manager](https://aws.amazon.com/certificate-manager/pricing/)
 - [Cloudfront](https://aws.amazon.com/cloudfront/pricing/)
 - [Route 53](https://aws.amazon.com/route53/pricing/)
+- [AWS description](https://aws.amazon.com/getting-started/projects/host-static-website/services-costs/)
