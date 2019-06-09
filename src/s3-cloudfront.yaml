@@ -106,7 +106,8 @@ Resources:
         Enabled: true
         # alternate domain CNAMEs
         Aliases:
-          - Ref: DomainName
+          - !Ref DomainName
+          - !Join ['', ['www.', !Ref DomainName]]
         ViewerCertificate:
           AcmCertificateArn: !Ref CertificateArn
           # Options: {`sni-only`, `vip`}. `sni-only` will incur no
