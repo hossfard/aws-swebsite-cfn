@@ -35,7 +35,7 @@ Conditions:
   CreateRoute53Cond: !Equals [ !Ref CreateRoute53, 'true' ]
 
 Resources:
-  zbS3StorageBucket:
+  S3StorageBucket:
     Type: AWS::S3::Bucket
     Properties:
       AccessControl: PublicRead
@@ -55,7 +55,7 @@ Resources:
     # Retain S3 bucket on stack deletion
     DeletionPolicy: Retain
 
-  zbCloudFront:
+  CloudfrontCDN:
     Type: AWS::CloudFront::Distribution
     Properties:
       DistributionConfig:
@@ -68,15 +68,15 @@ Resources:
         Origins:
           # Must remove `http(s)://` from name
           # Example: bucketname.s3-website-us-east-1.amazonaws.com
-          - DomainName: !Select [1, !Split ['//', !GetAtt zbS3StorageBucket.WebsiteURL]]
-            Id: zbOrigin
+          - DomainName: !Select [1, !Split ['//', !GetAtt S3StorageBucket.WebsiteURL]]
+            Id: CdnOrigin
             CustomOriginConfig:
               HTTPPort: 80
               HTTPSPort: 443
               OriginProtocolPolicy: http-only
         DefaultCacheBehavior:
           ViewerProtocolPolicy: redirect-to-https
-          TargetOriginId: zbOrigin
+          TargetOriginId: CdnOrigin
           ForwardedValues:
             QueryString : true
             Cookies:
@@ -103,7 +103,7 @@ Resources:
     Properties:
       Type: A
       AliasTarget:
-        DNSName: !GetAtt zbCloudFront.DomainName
+        DNSName: !GetAtt CloudfrontCDN.DomainName
         # There is only one endpoint
         HostedZoneId: !FindInMap [RegionMap, 'us-east-1', ZoneId]
         EvaluateTargetHealth: false
@@ -114,14 +114,14 @@ Resources:
 Outputs:
 
   AWSWebsiteS3Url:
-    Value: !GetAtt zbS3StorageBucket.WebsiteURL
+    Value: !GetAtt S3StorageBucket.WebsiteURL
     # Cloudformation doesn't like using `Ref` in `Description`
     Description: 'HTTP website URL'
 
   AWSDomainURL:
-    Value: !Join ['', ['https://', !GetAtt zbS3StorageBucket.DomainName]]
+    Value: !Join ['', ['https://', !GetAtt S3StorageBucket.DomainName]]
     Description: 'S3 Domain URL'
 
   CloudFrontURL:
-    Value: !GetAtt zbCloudFront.DomainName
+    Value: !GetAtt CloudfrontCDN.DomainName
     Description: 'Cloudfront url'
