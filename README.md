@@ -7,9 +7,8 @@ hosting with HTTPS support on AWS.
   [Your TLD provider] --> [AWS Route53] --> [AWS Cloudfront] + [Certificate] -> [S3 URL]
 ```
 
-This assumes that you already own a domain. AWS Route53 DNS can be
-skipped altogether if using a subdomain or your DNS provider supports
-`ALIAS` records.
+This assumes that you already own a domain. AWS Route53 DNS may be
+skipped altogether depending on your DNS provider.
 
 # Requirements
 
@@ -23,7 +22,7 @@ skipped altogether if using a subdomain or your DNS provider supports
 aws --profile <profile-name> \
     cloudformation create-stack \
     --stack-name <cert-stack-name> \
-    --region "us-east-1" \
+    --region "us-east-1" \   # Do not change!
     --template-body file://./src/cert.yaml \
     --parameters ParameterKey=DomainName,ParameterValue="<sub.example.com>" \
     ParameterKey=VerificationDomain,ParameterValue="<example.com>"
@@ -36,10 +35,11 @@ where
     can be skipped there is only one unnamed profile in the config.
  - `<cert-stack-name>` name assigned to the stack
  - `<sub.example.com>` is the domain name e.g. `example.com` or
-   `sub.example.com`
+   `sub.example.com`. Do not use `www.`
  - `--region` value *must* remain `"us-east-1"`
- -  AWS will send emails to `<example.com>` domains for verification
-    at addresses below
+ -  `VerificationDomain`: Root domain where AWS will send emails to
+    (`<example.com>` in above example) for verification at
+    addresses below
 
  ```text
  administrator@<example.com>
@@ -56,9 +56,32 @@ If using the commandline do,
 
 ```bash
 aws --profile <profile-name> \
-    --region <region-name> \
-    describe-stacks --stack-name <cert-stack-name>
+    --region "us-east-1" \
+    cloudformation describe-stacks --stack-name <cert-stack-name>
 ```
+
+Example output:
+
+```json
+{
+ "Stacks": [
+    ...
+    "Outputs": [
+      {
+         "Description": "Certificate ARN",
+         "OutputKey": "CertArn",
+         "OutputValue": "arn:aws:acm:us-east-1:<redacted>:certificate/<redacted>"
+     }
+   ],
+   ...
+ ]
+}
+```
+
+If using the console, either look under the stack's `Outputs` field,
+or find the actual certificate and look at its ARN. *Note*: Use the
+certificates's ARN, not the stacks!
+
 
 4. Create storage (S3 bucket) and a CDN (cloudfront)
 
@@ -93,8 +116,14 @@ aws --profile <profile-name> \
     describe-stacks --stack-name <s3cf-stack-name>
 ```
 
-Create an ALIAS record pointing to cloudfront URL or have your
-provider use AWS DNS.
+Updating your DNS depends on your DNS providers and available options
+through them. If using a subdomain, creating a `CNAME` record pointing
+to the cloudfront URL is sufficient.
+
+Alternative, if using the root domain, and using Google domains, you
+can create couple of entries in your DNS records. See end notes in the
+long-winded section.
+
 
 # Long-winded Guide
 
@@ -112,9 +141,6 @@ with the caveat that all the resources would have to be created in the
 same region, which is less than ideal.
 
 0. Prerequisites
- - Unless using a subdomain, either your DNS provider must support
-   `ALIAS` records or must use AWS DNS (Route 53) since normal DNS
-   does not allow domain root `CNAME` records.
  - If not already installed, [install](https://aws.amazon.com/cli/) `awscli` or activate it.
  - It's assumed that a default aws profile exists. If not, pass
    `--profile <profile-name` to all `aws` commands.
@@ -156,10 +182,10 @@ The domain *must* be confirmed for the `cloudformation` stack creation
 to reach completion. Otherwise, if ignored for too long, the stack
 creation will timeout, fail, rollback, and delete the certificate.
 
-Alternatively, if you can't get access to those email addresses, set
-to `DNS` and enter the required DNS records for your domain and
-wait for AWS to verify the entries. You can get the required DNS
-records by doing a query on the stack status
+Alternatively, if you cannot get access to those email addresses, set
+to `DNS` and enter the required DNS records for your domain and wait
+for AWS to verify the entries. You can get the required DNS records by
+doing a query on the stack status
 
 ```text
 aws --region <region-name> \
@@ -210,9 +236,9 @@ where,
       along with `A ALIAS` record will be created (if `true`) pointing
       to the cloudfront URL.
     - `LogCloudfront` (optional) can be `true` or `false`
-      (default). If `true`, will create another bucket for cloudfront
-      logs. Note: cloudfront console provides *some* logging even if
-      this is set to `false`.
+      (default). If `true`, will create a bucket named
+      `<sbucket-name>-accesslog` for cloudfront logs. Note: cloudfront
+      console provides *some* logging even if this is set to `false`.
 
 Creation of this second stack may take a while (e.g. 20 minutes) to
 complete.
@@ -228,11 +254,19 @@ configuration list:
 
 ```text
 <subdomain> CNAME <cloudfront-url>
+www.<subdomain> CNAME <cloudfront-url>
 ```
 
-Alternatively if your DNS provider does not support `ALIAS` records
-and you are using the root domain for hosting, you have to use AWS DNS
-(Route53). Refer to `CreateRoute53` option above.
+Alternative, if using the root domain, and using Google domains, you
+can create couple of entries in your DNS records.
+
+- Synthetic record: Subdomain forward `@` to `www.<example.com>`
+- `CNAME` record: `www.<example.com> CNAME <cloudfront-url>`
+
+Or, alternatively, if your DNS provider does not support `ALIAS`
+records and you are using the root domain for hosting, and you cannot
+do the above, you can use AWS DNS (Route53). Refer to `CreateRoute53`
+option above.
 
 4. Website URL that you should redirect in DNS is in the output fields
 
