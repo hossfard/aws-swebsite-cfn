@@ -52,8 +52,9 @@ Resources:
             AllowedOrigins: ['*']
       VersioningConfiguration:
         Status: Suspended
-    # Retain S3 bucket on stack deletion
-    DeletionPolicy: Retain
+    # Delete S3 bucket on stack deletion.
+    # Bucket must be empty, otherwise deletion will fail
+    DeletionPolicy: Delete
 
   CloudfrontCDN:
     Type: AWS::CloudFront::Distribution

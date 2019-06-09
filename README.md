@@ -262,14 +262,10 @@ aws --region <stack-region> \
 `<cert-stack-name>` and `<s3cf-stack-name>` are the stack names used
 when creating the stacks (see previous section). You can get [list of
 stacks](https://docs.aws.amazon.com/cli/latest/reference/cloudformation/list-stacks.html) in a given region using. *Note*: the S3 bucket is
-configured to be retain on stack deletion, i.e. the bucket will remain
-after stack deletion unless manually removed. Another consequence of
-this is that recreating the stack as is will fail unless the bucket is
-deleted because the bucket name now already exists.
+configured to be deleted on stack deletion, but the stack cannot
+delete the bucket if its contents are not empty. Consequently,
+attempting to delete a stack with a non-empty bucket will fail.
 
-```bash
-aws cloudformation list-stacks
-```
 
 # Resources
 
