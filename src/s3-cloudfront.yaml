@@ -24,6 +24,14 @@ Parameters:
       - 'false'
     Description: 'Indicates whether to create DNS entry or not'
 
+  LogCloudfront:
+    Type: String
+    Default: 'false'
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Description: 'Creates logging for cloufront if true'
+
 Mappings:
   RegionMap:
     # see https://docs.aws.amazon.com/general/latest/gr/rande.html#cf_region
@@ -33,6 +41,7 @@ Mappings:
 
 Conditions:
   CreateRoute53Cond: !Equals [ !Ref CreateRoute53, 'true' ]
+  LogCloudfrontCond: !Equals [ !Ref LogCloudfront, 'true' ]
 
 Resources:
   S3StorageBucket:
@@ -53,6 +62,18 @@ Resources:
       VersioningConfiguration:
         Status: Suspended
     # Delete S3 bucket on stack deletion.
+    # Bucket must be empty, otherwise deletion will fail
+    DeletionPolicy: Delete
+
+  S3LogBucket:
+    Type: AWS::S3::Bucket
+    Condition: LogCloudfrontCond
+    Properties:
+      AccessControl: Private
+      BucketName: !Join ['-', [!Ref S3BucketName, 'accesslog']]
+      VersioningConfiguration:
+        Status: Suspended
+    # Delete S3 bucket on stack deletion
     # Bucket must be empty, otherwise deletion will fail
     DeletionPolicy: Delete
 
@@ -91,6 +112,12 @@ Resources:
           # Options: {`sni-only`, `vip`}. `sni-only` will incur no
           # additional charges
           SslSupportMethod: sni-only
+        Logging:
+          Fn::If:
+            - LogCloudfrontCond
+            - Bucket: !GetAtt S3LogBucket.DomainName
+            - Ref: AWS::NoValue
+        Comment: !Ref DomainName
 
   R53HostedZone:
     Type: AWS::Route53::HostedZone

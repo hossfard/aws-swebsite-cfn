@@ -135,7 +135,8 @@ aws cloudformation create-stack \
     --template-body file://./src/cert.yaml \
     --parameters ParameterKey=DomainName,ParameterValue="<sub.example.com>" \
     ParameterKey=VerificationDomain,ParameterValue="<example.com>" \
-    ParameterKey=VerificationMethod,ParameterValue="{EMAIL,DNS}" # optional
+    ParameterKey=VerificationMethod,ParameterValue="{EMAIL,DNS}" \ # optional
+    ParameterKey=LogCloudfront,ParameterValue="{true, false}"   # optional
 # parameters are defined inside the config yaml file
 ```
 
@@ -208,6 +209,10 @@ where,
       (default). It is used to specify whether a Route53 hosted zone
       along with `A ALIAS` record will be created (if `true`) pointing
       to the cloudfront URL.
+    - `LogCloudfront` (optional) can be `true` or `false`
+      (default). If `true`, will create another bucket for cloudfront
+      logs. Note: cloudfront console provides *some* logging even if
+      this is set to `false`.
 
 Creation of this second stack may take a while (e.g. 20 minutes) to
 complete.
