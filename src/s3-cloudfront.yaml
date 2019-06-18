@@ -47,23 +47,35 @@ Resources:
   S3StorageBucket:
     Type: AWS::S3::Bucket
     Properties:
-      AccessControl: PublicRead
+      AccessControl: Private
       BucketName: !Ref S3BucketName
       MetricsConfigurations:
         - Id: EntireBucket
-      WebsiteConfiguration:
-        IndexDocument: 'index'
-        ErrorDocument: '404'
-      CorsConfiguration:
-        CorsRules:
-          - AllowedHeaders: ['*']
-            AllowedMethods: ['GET']
-            AllowedOrigins: ['*']
       VersioningConfiguration:
         Status: Suspended
     # Delete S3 bucket on stack deletion.
     # Bucket must be empty, otherwise deletion will fail
     DeletionPolicy: Delete
+
+  CFIdentityAccess:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: !Ref DomainName
+
+  S3StorageBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref S3BucketName
+      PolicyDocument:
+        Statement:
+          - Action:
+              - "s3:GetObject"
+            Effect: "Allow"
+            Resource: !Join ['', ['arn:aws:s3:::', !Ref S3BucketName, '/*']]
+            Principal:
+              CanonicalUser: !GetAtt CFIdentityAccess.S3CanonicalUserId
+            Sid: "Grant CloudFront Origin Identity to serve content"
 
   S3LogBucket:
     Type: AWS::S3::Bucket
@@ -88,14 +100,18 @@ Resources:
             Ref: DomainName
       DistributionConfig:
         Origins:
-          # Must remove `http(s)://` from name
-          # Example: bucketname.s3-website-us-east-1.amazonaws.com
-          - DomainName: !Select [1, !Split ['//', !GetAtt S3StorageBucket.WebsiteURL]]
+          - DomainName: !GetAtt S3StorageBucket.DomainName
             Id: CdnOrigin
-            CustomOriginConfig:
-              HTTPPort: 80
-              HTTPSPort: 443
-              OriginProtocolPolicy: http-only
+            # Make S3 bucket only accessible through CF
+            S3OriginConfig:
+              OriginAccessIdentity: !Join ['/', ['origin-access-identity/cloudfront', !Ref CFIdentityAccess]]
+        CustomErrorResponses:
+          # Default 404 page
+          - ErrorCode: 404
+            ResponseCode: 404
+            ResponsePagePath: '/404'
+        # Default root item filename in s3
+        DefaultRootObject: 'index'
         DefaultCacheBehavior:
           ViewerProtocolPolicy: redirect-to-https
           TargetOriginId: CdnOrigin
@@ -141,11 +157,6 @@ Resources:
       Name: !Ref DomainName
 
 Outputs:
-
-  AWSWebsiteS3Url:
-    Value: !GetAtt S3StorageBucket.WebsiteURL
-    # Cloudformation doesn't like using `Ref` in `Description`
-    Description: 'HTTP website URL'
 
   AWSDomainURL:
     Value: !Join ['', ['https://', !GetAtt S3StorageBucket.DomainName]]

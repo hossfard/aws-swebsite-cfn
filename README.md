@@ -4,7 +4,7 @@ Cloudformation templates for creating infrastructure for static site
 hosting with HTTPS support on AWS.
 
 ```text
-  [Your TLD provider] --> [AWS Route53] --> [AWS Cloudfront] + [Certificate] -> [S3 URL]
+  [Your DNS provider] --> [AWS Route53] --> [AWS Cloudfront] + [Certificate] -> [S3 URL]
 ```
 
 This assumes that you already own a domain. AWS Route53 DNS may be
@@ -104,6 +104,9 @@ where,
   - `<long-cert-ARN-string>` defines the certificate ARN (used for
      cloudfront) obtained in the previous step
 
+for more options, see the [long-winded guide](#long-winded-guide)
+below.
+
 5. Wait for the stack creation to finish. Then create a DNS entry
    pointing to cloudfront.
 
@@ -161,8 +164,7 @@ aws cloudformation create-stack \
     --template-body file://./src/cert.yaml \
     --parameters ParameterKey=DomainName,ParameterValue="<sub.example.com>" \
     ParameterKey=VerificationDomain,ParameterValue="<example.com>" \
-    ParameterKey=VerificationMethod,ParameterValue="{EMAIL,DNS}" \ # optional
-    ParameterKey=LogCloudfront,ParameterValue="{true, false}"   # optional
+    ParameterKey=VerificationMethod,ParameterValue="{EMAIL,DNS}" # optional
 # parameters are defined inside the config yaml file
 ```
 
@@ -221,7 +223,8 @@ aws cloudformation create-stack \
     --parameters ParameterKey=DomainName,ParameterValue="<sub.example.com>" \
     ParameterKey=S3BucketName,ParameterValue="<bucket-name>" \
     ParameterKey=CertificateArn,ParameterValue="<long-cert-ARN-string>" \
-    [ParameterKey=CreateRoute53,ParameterValue="{true,false}"
+    ParameterKey=CreateRoute53,ParameterValue="{true,false}" \ # optional
+    ParameterKey=LogCloudfront,ParameterValue="{true, false}"  # optional
 ```
 where,
     - `DomainName` is the same as the one defined in the previous step
@@ -304,6 +307,21 @@ stacks](https://docs.aws.amazon.com/cli/latest/reference/cloudformation/list-sta
 configured to be deleted on stack deletion, but the stack cannot
 delete the bucket if its contents are not empty. Consequently,
 attempting to delete a stack with a non-empty bucket will fail.
+
+# Uploading content
+
+These `s3-cloudfront.yaml` template is hard-coded to have
+- `index` as the document root
+- `404` as the 404 error page
+
+When uploading these, set the `Content-Type` meta tag to `text/html`
+otherwise AWS will likely consider them to be `octet-stream`, and
+instead of rendering the content, the browser will likely prompt users
+to download the content.
+
+Upload other files (see e.g. `aws s3 sync`) as private, and the
+specified bucket policy on S3 will allow them to be served through
+Cloudfront.
 
 
 # Resources
