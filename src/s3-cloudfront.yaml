@@ -76,6 +76,15 @@ Resources:
             Principal:
               CanonicalUser: !GetAtt CFIdentityAccess.S3CanonicalUserId
             Sid: "Grant CloudFront Origin Identity to serve content"
+          # Prevent 403 error codes for missing content
+          # ...or can replace CustomErrorResponses.ErrorCode with 403
+          - Action:
+              - "s3:ListBucket"
+            Effect: "Allow"
+            Resource: !Join ['', ['arn:aws:s3:::', !Ref S3BucketName]]
+            Principal:
+              CanonicalUser: !GetAtt CFIdentityAccess.S3CanonicalUserId
+            Sid: "Grant CloudFront Origin Identity to list bucket"
 
   S3LogBucket:
     Type: AWS::S3::Bucket
