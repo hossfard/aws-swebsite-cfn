@@ -123,6 +123,8 @@ Resources:
         DefaultRootObject: 'index'
         DefaultCacheBehavior:
           ViewerProtocolPolicy: redirect-to-https
+          # Default to serving gzip content
+          Compress: true
           TargetOriginId: CdnOrigin
           ForwardedValues:
             QueryString : true
