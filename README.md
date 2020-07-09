@@ -116,7 +116,7 @@ point to is in the output fields:
 ```bash
 aws --profile <profile-name> \
     --region <region-name> \
-    describe-stacks --stack-name <s3cf-stack-name>
+    cloudformation describe-stacks --stack-name <s3cf-stack-name>
 ```
 
 Updating your DNS depends on your DNS providers and available options
